@@ -1,0 +1,117 @@
+@echo off
+title Cloudflared 隧道启动器
+cd /d "%~dp0"
+chcp 936 >nul
+
+set "URL_CACHE=last_url.txt"
+set "PROTO_CACHE=last_protocol.txt"
+set "LAST_URL="
+set "LAST_PROTO="
+set "TARGET_URL="
+set "TARGET_PROTO="
+
+:: 读取缓存
+if exist "%URL_CACHE%" set /p LAST_URL=<"%URL_CACHE%"
+if exist "%PROTO_CACHE%" set /p LAST_PROTO=<"%PROTO_CACHE%"
+
+echo ============================================
+echo        Cloudflared 隧道启动脚本
+echo ============================================
+echo.
+
+:: ========== 选择地址 ==========
+if "%LAST_URL%"=="" goto NEWURL
+
+echo [检测到上次使用的地址] %LAST_URL%
+echo.
+echo   [1] 使用上次的地址
+echo   [2] 输入新的地址
+echo.
+set /p CHOICE=请选择 (1/2，直接回车默认 1): 
+if "%CHOICE%"=="" set CHOICE=1
+if "%CHOICE%"=="1" (
+    set "TARGET_URL=%LAST_URL%"
+    goto CHOOSE_PROTO
+)
+if "%CHOICE%"=="2" goto NEWURL
+
+echo 无效的选择，退出。
+pause
+exit /b
+
+:NEWURL
+echo.
+echo [提示] 请输入本地服务地址。
+echo [示例] http://localhost:3000
+echo.
+set /p TARGET_URL=请输入地址: 
+if "%TARGET_URL%"=="" (
+    echo 输入为空，退出。
+    pause
+    exit /b
+)
+
+:: ========== 选择协议 ==========
+:CHOOSE_PROTO
+echo.
+
+if "%LAST_PROTO%"=="" set "LAST_PROTO=quic"
+
+echo [上次使用的协议] %LAST_PROTO%
+echo.
+echo   [1] 使用上次的协议 (%LAST_PROTO%)
+echo   [2] QUIC (默认，速度快，但可能被网络限制)
+echo   [3] HTTP2 (兼容性好，能穿透限制，速度可能慢一点)
+echo.
+set /p PCHOICE=请选择 (1/2/3，直接回车默认 1): 
+if "%PCHOICE%"=="" set PCHOICE=1
+
+if "%PCHOICE%"=="1" (
+    set "TARGET_PROTO=%LAST_PROTO%"
+    goto RUN
+)
+if "%PCHOICE%"=="2" (
+    set "TARGET_PROTO=quic"
+    goto RUN
+)
+if "%PCHOICE%"=="3" (
+    set "TARGET_PROTO=http2"
+    goto RUN
+)
+
+echo 无效的选择，退出。
+pause
+exit /b
+
+:: ========== 启动 ==========
+:RUN
+echo.
+echo [信息] 目标地址: %TARGET_URL%
+echo [信息] 使用协议: %TARGET_PROTO%
+echo.
+echo --------------------------------------------
+echo  按 Ctrl+C 可以停止隧道
+echo --------------------------------------------
+echo.
+
+:: 保存缓存
+echo %TARGET_URL%>"%URL_CACHE%"
+echo %TARGET_PROTO%>"%PROTO_CACHE%"
+
+where cloudflared >nul 2>nul
+if errorlevel 1 (
+    echo [错误] 未找到 cloudflared，请确认已加入 PATH。
+    pause
+    exit /b
+)
+
+:: 根据协议启动
+if /i "%TARGET_PROTO%"=="quic" (
+    cloudflared tunnel --url %TARGET_URL% --protocol quic
+) else (
+    cloudflared tunnel --url %TARGET_URL% --protocol http2
+)
+
+echo.
+echo cloudflared 已退出。
+pause
